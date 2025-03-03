@@ -37,13 +37,13 @@ game_manager.initialize_players("Player 1", "Player 2")
 move_buttons = []
 # ==== Player 1 buttons (left side)
 for i in range(3):
-    button_rect = pygame.Rect(50, 200 + i * 50, 100, 40)
+    button_rect = pygame.Rect(50, 250 + i * 50, 130, 40)
     move_name = f"Move {i+1}"
     move_buttons.append(Button(button_rect, move_name, game_manager.players[0].color))
 
 # ==== Player 2 buttons (right side)
 for i in range(3):
-    button_rect = pygame.Rect(SCREEN_WIDTH - 150,200 + i * 50,100,40)
+    button_rect = pygame.Rect(SCREEN_WIDTH - 180, 250 + i * 50,130,40)
     move_name = f"Move {i+1}"
     move_buttons.append(Button(button_rect, move_name, game_manager.players[1].color))
 
@@ -82,6 +82,9 @@ def handle_input(mouse_pos, grid_x, grid_y, game_manager, move_buttons):
                 # Check if grid was clicked and move was selected
                 if game_manager.selected_move and (0 <= mouse_grid_x < GRID_SIZE and 0 <= mouse_grid_y < GRID_SIZE):
                     game_manager.apply_move(mouse_grid_x, mouse_grid_y)
+                    # Clear button selection
+                    for button in move_buttons:
+                        button.selected = False
 
     return True, mouse_grid_x, mouse_grid_y
 
@@ -89,7 +92,6 @@ def handle_button_click(move_buttons, mouse_pos, game_manager):
     """
     Handles button clicks for move selection.
     """
-
     for i, button in enumerate(move_buttons):
         if button.is_over(mouse_pos):
             # Determine which player the button belongs to
@@ -99,38 +101,44 @@ def handle_button_click(move_buttons, mouse_pos, game_manager):
                 selected_move_name = f"Move {(i % 3) + 1}" # Modulo leaves the reminder of division, but if a < b it just equals b
                 game_manager.select_move(selected_move_name)
                 print(f"Selected Move {selected_move_name}")
+                button.selected = True
 
 
-def draw_player_portraits(screen, game_manager, font):
+
+
+def draw_player_infos(screen, game_manager, move_buttons, font):
     """
-    Draws player's portraits and writes names.
+    Draws player's portraits, names, buttons and stats.
     """
+
     for i in range(2):
         next_player = game_manager.players[i]
 
         # Portrait Pos
-        x_pos = 50 if i == 0 else SCREEN_WIDTH - 150
+        x_pos = 50 if i == 0 else SCREEN_WIDTH - 180
 
         # Portrait area
-        portrait_rect = pygame.Rect(x_pos,80,100,100)
+        portrait_rect = pygame.Rect(x_pos, 105, 130, 130)
         pygame.draw.rect(screen, next_player.color, portrait_rect)
 
         # Player name
         name_surface = font.render(next_player.name, True, WHITE)
-        name_rect = name_surface.get_rect(center=(portrait_rect.centerx, portrait_rect.bottom + 20))
+        name_rect = name_surface.get_rect(center=(portrait_rect.centerx, portrait_rect.bottom - 160))
         screen.blit(name_surface, name_rect)
 
-        #Highlight current player
-        if i == game_manager.current_player_index:
-            pygame.draw.rect(screen, GREEN, portrait_rect.inflate(10,10), 3)
+        # Player score
+        score_text = f"Cells: {next_player.cells_conquered}"
+        score_surface = font.render(score_text, True, WHITE)
+        score_rect = score_surface.get_rect(center=(portrait_rect.centerx, portrait_rect.centery + 310))
+        screen.blit(score_surface, score_rect)
 
-def draw_move_buttons(screen, game_manager, move_buttons, font):
-    """
-    Draw move selection buttons for current player.
-    """
+        # Highlight current player
+        if i == game_manager.current_player_index:
+            pygame.draw.rect(screen, WHITE, portrait_rect.inflate(10,10), 3)
+
     for i, button in enumerate(move_buttons):
-        if i // 3 == game_manager.current_player_index:
-            button.draw(screen, font)
+        button.draw(screen, font)
+
 
 def draw_game_info(screen, game_manager, font, title_font):
     """
@@ -140,7 +148,7 @@ def draw_game_info(screen, game_manager, font, title_font):
     """
 
     # Game title
-    title_surface = title_font.render("Cell Wars", True, BLACK)
+    title_surface = title_font.render("Cell Wars", True, WHITE)
     title_rect = title_surface.get_rect(center=(SCREEN_WIDTH // 2, 30))
     screen.blit(title_surface, title_rect)
 
@@ -150,22 +158,9 @@ def draw_game_info(screen, game_manager, font, title_font):
     turn_rect = turn_surface.get_rect(center=(SCREEN_WIDTH // 2, 60))
     screen.blit(turn_surface, turn_rect)
 
-    # Player scores
-    # == Player 1 score
-    player1 = game_manager.players[0]
-    score_text1 = f"Cells: {player1.cells_conquered}"
-    score_surface1 = font.render(score_text1, True, WHITE)
-    screen.blit(score_surface1, (50, 200 - 30))
-
-    # == Player 2 score
-    player2 = game_manager.players[1]
-    score_text2 = f"Cells: {player2.cells_conquered}"
-    score_surface2 = font.render(score_text2, True, WHITE)
-    screen.blit(score_surface2, (SCREEN_WIDTH - 150, 200 - 30))
-
-    # Selected move indicator
+    # Select starting cell indicator
     if game_manager.selected_move:
-        move_text = f"Selected: {game_manager.selected_move}"
+        move_text = "Select starting cell"
         move_surface = font.render(move_text, True, WHITE)
         move_rect = move_surface.get_rect(center=(SCREEN_WIDTH//2, SCREEN_HEIGHT - 30))
         screen.blit(move_surface, move_rect)
@@ -228,8 +223,7 @@ def render_game(screen, game_manager, font, title_font, move_buttons, grid_x, gr
 
     # Draw each component
     draw_grid(screen, game_manager, grid_x, grid_y, mouse_grid_x, mouse_grid_y)
-    draw_player_portraits(screen, game_manager, font)
-    draw_move_buttons(screen, game_manager, move_buttons, font)
+    draw_player_infos(screen, game_manager, move_buttons, font)
     draw_game_info(screen, game_manager, font, title_font)
     draw_game_over(screen, game_manager, title_font)
 

@@ -1,5 +1,7 @@
 import pygame
 
+WHITE = (240, 246, 239)
+
 #-- Button Class
 class Button:
     """
@@ -15,6 +17,7 @@ class Button:
         self.text = text
         self.color = color
         self.hover = False
+        self.selected = False
 
     def draw(self, surface, font):
         """
@@ -36,10 +39,14 @@ class Button:
             pygame.draw.rect(surface, self.color, self.rect)
 
         # Draw Button Border
-        pygame.draw.rect(surface, (240, 246, 239), self.rect, 2) #Border
+        #pygame.draw.rect(surface, (240, 246, 239), self.rect, 2) #Border
+
+        # Draw Button highlight if selected
+        if self.selected:
+            pygame.draw.rect(surface, WHITE, self.rect.inflate(10, 10), 3)
 
         # Draw Button text
-        text_surface = font.render(self.text, True, (240, 246, 239))
+        text_surface = font.render(self.text, True, WHITE)
         text_rect = text_surface.get_rect(center=self.rect.center)
         surface.blit(text_surface, text_rect)
 
@@ -54,7 +61,6 @@ class Button:
              bool: True if position is over button, False otherwise
          """
         return self.rect.collidepoint(pos)
-
 
 
 

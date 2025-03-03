@@ -7,15 +7,15 @@ class GameManager:
         self.players = []
         self.current_player_index = 0
         self.selected_move = None
-        self.total_turns = 5
+        self.total_turns = 10
         self.current_turn = 1
         self.game_over = False
 
     def initialize_players(self, player1_name, player2_name):
         """Create the two Players"""
         #Colors
-        player1_color = (255, 150, 150)  # Pink
-        player2_color = (255, 255, 150)  # Yellow
+        player1_color = (0, 175, 185)  # Verdigris
+        player2_color = (240, 113, 103)  # Bittersweet
 
         player1 = Player(1, player1_name, player1_color)
         player2 = Player(2, player2_name, player2_color)
