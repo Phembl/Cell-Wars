@@ -21,6 +21,7 @@ GREEN = (0,255,0)
 # == Font
 font = pygame.font.Font("mondwest.ttf", 24)
 title_font = pygame.font.Font("mondwest.ttf", 32)
+button_font = pygame.font.Font("mondwest.ttf", 18)
 
 
 # ==================== GAME SETUP ==================== #
@@ -33,21 +34,20 @@ pygame.display.set_caption(WINDOW_TITLE)
 game_manager = GameManager(GRID_SIZE, GRID_SIZE, CELL_SIZE)
 game_manager.initialize_players("Player 1", "Player 2")
 
-# == Create move buttons
-move_buttons = []
+# == Create action buttons
+action_buttons = []
+
 # ==== Player 1 buttons (left side)
-for i in range(3):
+for i, action in enumerate(game_manager.players[0].actions):
     button_rect = pygame.Rect(50, 250 + i * 50, 130, 40)
-    move_name = f"Move {i+1}"
-    move_buttons.append(Button(button_rect, move_name, game_manager.players[0].color))
+    action_buttons.append(Button(button_rect, action.name, game_manager.players[0].color))
 
 # ==== Player 2 buttons (right side)
-for i in range(3):
+for i, action in enumerate(game_manager.players[1].actions):
     button_rect = pygame.Rect(SCREEN_WIDTH - 180, 250 + i * 50,130,40)
-    move_name = f"Move {i+1}"
-    move_buttons.append(Button(button_rect, move_name, game_manager.players[1].color))
+    action_buttons.append(Button(button_rect, action.name, game_manager.players[1].color))
 
-# == Calculate grid coordinates from mouse position
+# == Calculate grid coordinates
 grid_surface_width = GRID_SIZE * CELL_SIZE
 grid_surface_height = GRID_SIZE * CELL_SIZE
 grid_x = (SCREEN_WIDTH - GRID_SIZE * CELL_SIZE) // 2
@@ -55,9 +55,10 @@ grid_y = (SCREEN_HEIGHT - GRID_SIZE * CELL_SIZE) // 2
 
 # ==================== FUNCTION DEFINITIONS ==================== #
 
-def handle_input(mouse_pos, grid_x, grid_y, game_manager, move_buttons):
+def handle_input(mouse_pos, grid_x, grid_y, game_manager, action_buttons):
     """
     Handles user input and events.
+    Returns True if the game is still running and grid coordinates.
     """
 
     # Calculate grid coordinates from mouse position
@@ -65,7 +66,7 @@ def handle_input(mouse_pos, grid_x, grid_y, game_manager, move_buttons):
     mouse_grid_y = (mouse_pos[1] - grid_y) // CELL_SIZE
 
     # Checks and updates button hover state according to mouse position
-    for button in move_buttons:
+    for button in action_buttons:
         button.hover = button.is_over(mouse_pos)
 
     # Handle events
@@ -76,37 +77,50 @@ def handle_input(mouse_pos, grid_x, grid_y, game_manager, move_buttons):
         elif event.type == pygame.MOUSEBUTTONDOWN:
             # Left click
             if event.button == 1 and not game_manager.game_over:
-                # Check if a move button was clicked
-                handle_button_click(move_buttons, mouse_pos, game_manager)
+                # Check if an action button was clicked
+                handle_button_click(action_buttons, mouse_pos, game_manager)
 
-                # Check if grid was clicked and move was selected
-                if game_manager.selected_move and (0 <= mouse_grid_x < GRID_SIZE and 0 <= mouse_grid_y < GRID_SIZE):
-                    game_manager.apply_move(mouse_grid_x, mouse_grid_y)
+                # Check if grid was clicked and action was selected
+                if game_manager.selected_action and (0 <= mouse_grid_x < GRID_SIZE and 0 <= mouse_grid_y < GRID_SIZE):
+                    game_manager.apply_action(mouse_grid_x, mouse_grid_y)
                     # Clear button selection
-                    for button in move_buttons:
+                    for button in action_buttons:
                         button.selected = False
 
     return True, mouse_grid_x, mouse_grid_y
 
-def handle_button_click(move_buttons, mouse_pos, game_manager):
+def handle_button_click(action_buttons, mouse_pos, game_manager):
     """
-    Handles button clicks for move selection.
+    Handles button clicks for action selection.
     """
-    for i, button in enumerate(move_buttons):
+
+    action_length = len(game_manager.players[0].actions)
+
+    # Clear selection on all buttons
+    for button in action_buttons:
+        button.selected = False
+
+    for i, button in enumerate(action_buttons):
         if button.is_over(mouse_pos):
             # Determine which player the button belongs to
-            player_idx = i // 3 # This will be 0 if player 1 and 1 if player 2 (so clever)
+            player_idx = i // action_length # This will be 0 if player 1 and 1 if player 2 (so clever)
+
             # Only allow current players button to be clicked
             if player_idx == game_manager.current_player_index:
-                selected_move_name = f"Move {(i % 3) + 1}" # Modulo leaves the reminder of division, but if a < b it just equals b
-                game_manager.select_move(selected_move_name)
-                print(f"Selected Move {selected_move_name}")
+                action_idx = i % action_length # Modulo leaves the reminder of division, but if a < b it just equals a
+
+                # Get the action object
+                action = game_manager.players[player_idx].actions[action_idx]
+
+                # Pass the action to GameManager
+                game_manager.select_action(action)
+                print(f"Selected action {action.name}")
                 button.selected = True
 
 
 
 
-def draw_player_infos(screen, game_manager, move_buttons, font):
+def draw_player_infos(screen, game_manager, action_buttons, font):
     """
     Draws player's portraits, names, buttons and stats.
     """
@@ -136,8 +150,8 @@ def draw_player_infos(screen, game_manager, move_buttons, font):
         if i == game_manager.current_player_index:
             pygame.draw.rect(screen, WHITE, portrait_rect.inflate(10,10), 3)
 
-    for i, button in enumerate(move_buttons):
-        button.draw(screen, font)
+    for i, button in enumerate(action_buttons):
+        button.draw(screen, button_font)
 
 
 def draw_game_info(screen, game_manager, font, title_font):
@@ -159,11 +173,11 @@ def draw_game_info(screen, game_manager, font, title_font):
     screen.blit(turn_surface, turn_rect)
 
     # Select starting cell indicator
-    if game_manager.selected_move:
-        move_text = "Select starting cell"
-        move_surface = font.render(move_text, True, WHITE)
-        move_rect = move_surface.get_rect(center=(SCREEN_WIDTH//2, SCREEN_HEIGHT - 30))
-        screen.blit(move_surface, move_rect)
+    if game_manager.selected_action:
+        action_text = "Select starting cell"
+        action_surface = font.render(action_text, True, WHITE)
+        action_rect = action_surface.get_rect(center=(SCREEN_WIDTH//2, SCREEN_HEIGHT - 30))
+        screen.blit(action_surface, action_rect)
 
 
 def draw_game_over(screen, game_manager, title_font):
@@ -213,8 +227,30 @@ def draw_grid(screen, game_manager, grid_x, grid_y, mouse_grid_x, mouse_grid_y):
         )
         pygame.draw.rect(screen, GREEN, highlight_rect, 2)
 
+def draw_action_description(screen, font, game_manager, action_buttons, mouse_pos):
+    """
+    Draw the description of an action when hovering over its button.
+    """
+    action_length = len(game_manager.players[0].actions)
 
-def render_game(screen, game_manager, font, title_font, move_buttons, grid_x, grid_y, mouse_grid_x, mouse_grid_y):
+    for i, button in enumerate(action_buttons):
+        if button.hover:
+            # Determine which player's button this is
+            player_idx = i // action_length
+            button_idx = i % action_length
+
+            # Get Button
+            action = game_manager.players[player_idx].actions[button_idx]
+
+            # Draw description
+            description_surface = font.render(action.description, True, WHITE)
+            description_rectangle = description_surface.get_rect(center=(SCREEN_WIDTH // 2, SCREEN_HEIGHT - 60))
+            screen.blit(description_surface, description_rectangle)
+            break
+
+
+
+def render_game(screen, game_manager, font, title_font, action_buttons, grid_x, grid_y, mouse_grid_x, mouse_grid_y):
     """
     Render the game screen.
     """
@@ -223,9 +259,10 @@ def render_game(screen, game_manager, font, title_font, move_buttons, grid_x, gr
 
     # Draw each component
     draw_grid(screen, game_manager, grid_x, grid_y, mouse_grid_x, mouse_grid_y)
-    draw_player_infos(screen, game_manager, move_buttons, font)
+    draw_player_infos(screen, game_manager, action_buttons, font)
     draw_game_info(screen, game_manager, font, title_font)
     draw_game_over(screen, game_manager, title_font)
+    draw_action_description(screen, font, game_manager, action_buttons, mouse_pos)
 
     # Update the display
     pygame.display.flip()
@@ -240,10 +277,10 @@ while running:
     mouse_pos = pygame.mouse.get_pos()
 
     # == Handle input
-    running, mouse_grid_x, mouse_grid_y = handle_input(mouse_pos, grid_x, grid_y, game_manager, move_buttons)
+    running, mouse_grid_x, mouse_grid_y = handle_input(mouse_pos, grid_x, grid_y, game_manager, action_buttons)
 
     # == Render game
-    render_game(screen, game_manager, font, title_font, move_buttons, grid_x, grid_y, mouse_grid_x, mouse_grid_y)
+    render_game(screen, game_manager, font, title_font, action_buttons, grid_x, grid_y, mouse_grid_x, mouse_grid_y)
 
 # == Quit the game
 pygame.quit()

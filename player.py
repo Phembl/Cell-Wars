@@ -4,19 +4,18 @@ class Player:
         self.name = name
         self.color = color
         self.cells_conquered = 0
-        self.moves = [] # Will be used later
+        self.actions = []
 
-    def add_move(self, move):
-        """Add a move to the player's moveset"""
-        self.moves.append(move)
+    def add_action(self, action):
+        """
+        Add an action to the player's action-set.
+        """
+
+        self.actions.append(action)
 
     def update_cells_conquered(self, count):
-        """Update the number of cells conquered by this player"""
-        self.cells_conquered = count
+        """
+        Update the number of cells conquered by this player.
+        """
 
-    def get_move_by_name(self, name):
-        """Return the move with the given name"""
-        for move in self.moves:
-            if move.name == name:
-                return move
-        return None
+        self.cells_conquered = count
