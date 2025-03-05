@@ -6,7 +6,7 @@ from cellular_automaton import CellularAutomaton
 
 
 class GameManager:
-    def __init__(self, grid_width, grid_height, cell_size):
+    def __init__(self, grid_width, grid_height, cell_size, network_manager = None):
         self.grid = Grid(grid_width, grid_height, cell_size) #Initializes the grid
         self.players = []
         self.current_player_index = 0
@@ -14,6 +14,10 @@ class GameManager:
         self.total_turns = 10
         self.current_turn = 1
         self.game_over = False
+
+        # Network properties
+        self.network_manager = network_manager
+        self.is_networked = network_manager is not None
 
     def initialize_players(self, player1_name, player2_name):
         """
