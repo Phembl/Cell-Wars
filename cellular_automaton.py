@@ -25,14 +25,20 @@ class CellularAutomaton:
         self.overwrite_neutral = overwrite_neutral
         self.overwrite_enemy = overwrite_enemy
         self.possible_cells = set()  # Cells that are currently being processed
+        self.current_generation = 0
 
     def set_starting_cell(self, x, y):
         """
         Set the starting cell coordinate.
         """
         if 0 <= x < self.grid.width and 0 <= y < self.grid.height: # Defensive programming, avoids error if non-existing coordinate is given
+            # Set the cell to the player's color
             self.grid.set_cell(x, y, self.player_id)
             self.possible_cells.add((x, y))
+
+            #Return the starting cell
+            return [[x, y, self.player_id]]
+        return []
 
     def can_conquer_cell(self, x, y):
         """
@@ -106,6 +112,7 @@ class SimpleExpansion(CellularAutomaton):
     def step(self):
         # Create an empty set to store the new possible cells for the next generation
         next_generation_cells = set()
+        changes = [] # Tracks changes for networking
 
         for current_x, current_y in self.possible_cells:
             # For each current cell, check all four neighboring directions
@@ -114,21 +121,28 @@ class SimpleExpansion(CellularAutomaton):
             if self.can_conquer_cell(current_x, current_y - 1):
                 self.grid.set_cell(current_x, current_y - 1, self.player_id)
                 next_generation_cells.add((current_x, current_y - 1))
+                changes.append([current_x, current_y - 1, self.player_id])
 
             # Check cell below
             if self.can_conquer_cell(current_x, current_y + 1):
                 self.grid.set_cell(current_x, current_y + 1, self.player_id)
                 next_generation_cells.add((current_x, current_y + 1))
+                changes.append([current_x, current_y + 1, self.player_id])
 
             # Check cell left
             if self.can_conquer_cell(current_x - 1, current_y):
                 self.grid.set_cell(current_x - 1, current_y, self.player_id)
                 next_generation_cells.add((current_x - 1, current_y))
+                changes.append([current_x - 1, current_y, self.player_id])
 
             # Check cell right
             if self.can_conquer_cell(current_x + 1, current_y):
                 self.grid.set_cell(current_x + 1, current_y, self.player_id)
                 next_generation_cells.add((current_x + 1, current_y))
+                changes.append([current_x + 1, current_y, self.player_id])
 
         # After processing all current cells, update our possible_cells for the next step
         self.possible_cells = next_generation_cells
+
+        # Return the changes for networking
+        return changes

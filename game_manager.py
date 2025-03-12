@@ -1,3 +1,4 @@
+import pygame
 from cellular_automaton import SimpleExpansion
 from player import Player
 from grid import Grid
@@ -15,9 +16,20 @@ class GameManager:
         self.current_turn = 1
         self.game_over = False
 
+        # Animation properties
+        self.animation_in_progress = False
+        self.animation_changes = None # List of all changes to animate (format: [[x1,y1,player_id], [x2,y2,player_id], ...])
+        self.animation_index = 0
+        self.step_delay = 100  # milliseconds between animation steps
+        self.next_step_time = 0
+        self.changes_per_step = 1  # Number of cells to update per animation step
+
         # Network properties
         self.network_manager = network_manager
+        self.is_host = network_manager is not None and hasattr(network_manager, 'host_game')
+        self.is_client = network_manager is not None and hasattr(network_manager, 'join_game')
         self.is_networked = network_manager is not None
+        self.waiting_for_remote = False # True when waiting for the other player to take their turn
 
     def initialize_players(self, player1_name, player2_name):
         """
@@ -33,7 +45,7 @@ class GameManager:
         """
         Player action.
         Creates the actions each player can chose.
-        Name, description, CA to use, number of generations, can overwrite neutral tiles, can overwrite enemy tiles, price
+        Name, description, CA to use, number of generations, if can overwrite neutral tiles, if can overwrite enemy tiles, price
         """
         simple_expansion = PlayerAction(
             "Diamond Bomb",
@@ -96,6 +108,10 @@ class GameManager:
         if self.current_turn > self.total_turns:
             self.game_over = True
 
+        # In networked games, check if it's our turn
+        if self.is_networked:
+            self.waiting_for_remote = not self.is_my_turn()
+
     def select_action(self, action):
         """
         The action that the player has selected.
@@ -107,21 +123,58 @@ class GameManager:
     def apply_action(self, grid_x, grid_y):
         """
         Apply the selected action at the given coordinates.
+        - Verifies that an action is selected, the game isn't over, and no animation is in progress. Verify that it's your turn.
+        - Creates the automaton from the selected action and sets the starting cell.
+        - Runs the automaton and captures all changes.
+        - Creates a message with:
+                - The type: "action_result"
+                - The action name
+                - Starting coordinates
+                - List of all cell changes that occurred
+        - Sends this message to the other player and starts animation playback locally.
         """
 
-        if self.selected_action and not self.game_over:
-            current_player = self.get_current_player()
+        #Check if we can apply the action
+        if not self.selected_action or self.game_over or self.animation_in_progress:
+            return False
 
-            # Create and run the automaton
-            automaton = self.selected_action.create_automaton(self.grid, current_player.player_id)
-            automaton.set_starting_cell(grid_x, grid_y)
+        # Check if it's our turn in networked mode
+        if self.is_networked and not self.is_my_turn():
+            return False
+
+        current_player = self.get_current_player()
+
+
+        # Create the automaton
+        automaton = self.selected_action.create_automaton(self.grid, current_player.player_id)
+
+        # Set starting cell and get initial grid changes
+        initial_grid_changes = automaton.set_starting_cell(grid_x, grid_y)
+
+        if self.is_networked:
+            # Run and capture all changes
+            all_changes = initial_grid_changes + automaton.run()
+
+            # Send to other player
+            message = {
+                "type": "action_result",
+                "action_name": self.selected_action.name,
+                "grid_x": grid_x,
+                "grid_y": grid_y,
+                "changes": all_changes
+            }
+            self.network_manager.send_message(message)
+
+            # Start animated playback
+            self.start_animation_playback(all_changes)
+
+        else:
+            # Local game - just run normally
             automaton.run()
-
-            # Clear selected action
             self.selected_action = None
-
-            # Next turn
             self.next_turn()
+
+        return True
 
     def update_cell_count(self):
         """
@@ -138,3 +191,107 @@ class GameManager:
 
         for player in self.players:
             player.update_cells_conquered(counts.get(player.player_id, 0))
+
+    def start_animation_playback(self, changes):
+        """
+        Start animation playback.
+        - Takes a list of cell changes to animate.
+        - Sets up the animation state (resets index, marks animation as in progress).
+        - Schedules the first animation step.
+        - Clears the selected action.
+        """
+
+        # Store changes for animation
+        self.animation_changes = changes
+        self.animation_index = 0
+        self.animation_in_progress = True
+        self.next_step_time = pygame.time.get_ticks() + self.step_delay
+
+        # Clear selected action
+        self.selected_action = None
+
+    def update_animation(self, current_time):
+        """
+        Update animation state
+        - Checks if it's time for the next animation step
+        - Applies a batch of changes (controlled by changes_per_step)
+        - Updates the animation index
+        - Schedules the next batch
+        - Ends the animation and calls next_turn() when all changes are applied
+        """
+
+        if not self.animation_in_progress or not self.animation_changes:
+            return
+
+        if current_time >= self.next_step_time:
+            # Apply next batch of changes
+            changes_applied = 0
+
+            while changes_applied < self.changes_per_step:
+                if self.animation_index >= len(self.animation_changes):
+                    # Animation complete
+                    self.animation_in_progress = False
+                    self.animation_changes = None
+
+                    # Move to next turn
+                    self.next_turn()
+                    break
+
+            change = self.animation_changes[self.animation_index]
+            x,y, player_id = change
+            self.grid.set_cell(x, y, player_id)
+            self.animation_index += 1
+            changes_applied += 1
+
+        # Schedule next batch
+        self.next_step_time = current_time + self.step_delay
+
+    def is_my_turn(self):
+        """
+        Check if it's this client's turn in a networked game.
+        """
+
+        if not self.is_networked:
+            return True  # Always our turn in local game
+
+        return (
+                (self.is_host and self.current_player_index == 0) or
+                (self.is_client and self.current_player_index == 1)
+        )
+
+    def process_network_messages(self):
+        """
+        Process any pending network messages.
+        - Checks if there are any new messages from the network_manager.
+        - Handles "action_result" messages by extracting the changes.
+        - Starts the animation playback with those changes.
+        """
+
+        if not self.is_networked or not self.network_manager:
+            return
+
+        message = self.network_manager.get_next_message()
+
+        if not message:
+            return
+
+        if message["type"] == "action_result":
+            # Extract data
+            changes = message["changes"]
+
+        # Start animated playback
+        self.start_animation_playback(changes)
+
+    def update (self, current_time):
+        """
+        Update game state - call this every frame.
+        - Acts as the main update method called every frame
+        - First checks for network messages
+        - Then updates any ongoing animation
+        """
+
+        # Check for network messages
+        self.process_network_messages()
+
+        # Update animation
+        self.update_animation(current_time)
