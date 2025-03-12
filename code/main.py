@@ -1,5 +1,4 @@
 import pygame, sys
-from pathlib import Path #Imports path finding functionality (only used for font file)
 from game_manager import GameManager #Imports GameManager class
 from ui import Button #Imports Button class
 
@@ -20,12 +19,9 @@ WHITE = (240, 246, 239)
 GREEN = (0,255,0)
 
 # == Font
-current_dir = Path(__file__).parent
-main_dir = current_dir.parent
-font_path = main_dir / "font/mondwest.ttf"
-font = pygame.font.Font(font_path, 24)
-title_font = pygame.font.Font(font_path, 32)
-button_font = pygame.font.Font(font_path, 18)
+font = pygame.font.Font("font/mondwest.ttf", 24)
+title_font = pygame.font.Font("font/mondwest.ttf", 32)
+button_font = pygame.font.Font("font/mondwest.ttf", 18)
 
 # == Game window
 screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT))
@@ -75,6 +71,7 @@ def handle_input(mouse_pos, grid_x, grid_y, game_manager, action_buttons):
 
     return True, mouse_grid_x, mouse_grid_y
 
+
 def handle_button_click(action_buttons, mouse_pos, game_manager):
     """
     Handles button clicks for action selection.
@@ -102,8 +99,6 @@ def handle_button_click(action_buttons, mouse_pos, game_manager):
                 game_manager.select_action(action)
                 print(f"Selected action {action.name}")
                 button.selected = True
-
-
 
 
 def draw_player_infos(screen, game_manager, action_buttons, font):
@@ -178,31 +173,125 @@ def draw_game_info(screen, game_manager, font, title_font):
         screen.blit(status_surface, (SCREEN_WIDTH // 2 - status_surface.get_width() // 2, 75))
 
 
-def draw_game_over(screen, game_manager, title_font):
+def show_game_over_screen(screen, game_manager, title_font, font):
     """
-    Draw game over message if the game is over.
+    Unified game over screen for both local and network games.
+    Shows the winner and score, and in network mode also shows personalized win/lose message.
     """
+    player1, player2 = game_manager.players
 
-    if game_manager.game_over:
-        # Determine winner
-        player1, player2 = game_manager.players
-        if player1.cells_owned > player2.cells_owned:
-            winner = player1.name
-        elif player2.cells_owned > player1.cells_owned:
-            winner = player2.name
+    # Determine the winner
+    if player1.cells_conquered > player2.cells_conquered:
+        winner = player1.name
+        winner_id = 1
+    elif player2.cells_conquered > player1.cells_conquered:
+        winner = player2.name
+        winner_id = 2
+    else:
+        winner = "Draw"
+        winner_id = 0
+
+    # For network games, determine if local player won or lost
+    if game_manager.is_networked:
+        is_player1 = game_manager.is_host  # Host is player 1
+
+        if winner_id == 0:  # Draw
+            result = "It's a Draw!"
+            result_color = (255, 200, 0)  # Yellow
+        elif (winner_id == 1 and is_player1) or (winner_id == 2 and not is_player1):
+            result = "You Win!"
+            result_color = (100, 255, 100)  # Green
         else:
-            winner = "Draw"
+            result = "You Lose!"
+            result_color = (255, 100, 100)  # Red
+    else:
+        # For local games, show the winner but no personal result
+        result = None
 
-        game_over_text = f"Game Over! Winner: {winner}"
-        game_over_surface = title_font.render(game_over_text, True, WHITE)
-        text_rect = game_over_surface.get_rect(center=(SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2))
+    # Duration before auto-exit (5 seconds) for both network and local games
+    screen_duration = 5000
 
-        # Background for text
-        bg_rect = text_rect.inflate(20, 20)
-        pygame.draw.rect(screen, (50, 50, 50), bg_rect)
-        pygame.draw.rect(screen, WHITE, bg_rect, 2)
+    # Get the scores
+    player1_score = f"{player1.name}: {player1.cells_conquered} cells"
+    player2_score = f"{player2.name}: {player2.cells_conquered} cells"
 
-        screen.blit(game_over_surface, text_rect)
+    # Track start time for network game countdown
+    start_time = pygame.time.get_ticks()
+
+    # Game over screen loop
+    showing_game_over = True
+
+    while showing_game_over:
+        current_time = pygame.time.get_ticks()
+
+        # Handle events
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                pygame.quit()
+                sys.exit()
+
+            # Allow early exit on any key or click in any mode
+            if event.type == pygame.KEYDOWN or event.type == pygame.MOUSEBUTTONDOWN:
+                # Exit immediately
+                if game_manager.network_manager:
+                    game_manager.network_manager.disconnect()
+                pygame.quit()
+                sys.exit()
+
+        # Check if time is up for auto-exit (both local and network games)
+        if current_time - start_time >= screen_duration:
+            # Time to exit
+            showing_game_over = False
+
+            # Clean up network resources
+            if game_manager.network_manager:
+                game_manager.network_manager.disconnect()
+
+            # Exit the game completely
+            pygame.quit()
+            sys.exit()
+
+        # Draw game over screen
+        screen.fill(BLACK)
+
+        # Game over title
+        game_over_text = title_font.render("Game Over", True, WHITE)
+        game_over_rect = game_over_text.get_rect(center=(SCREEN_WIDTH // 2, 150))
+        screen.blit(game_over_text, game_over_rect)
+
+        # Winner text
+        winner_text = title_font.render(f"Winner: {winner}", True, WHITE)
+        winner_rect = winner_text.get_rect(center=(SCREEN_WIDTH // 2, 200))
+        screen.blit(winner_text, winner_rect)
+
+        # Result text (only for network games)
+        if game_manager.is_networked and result:
+            result_text = title_font.render(result, True, result_color)
+            result_rect = result_text.get_rect(center=(SCREEN_WIDTH // 2, 250))
+            screen.blit(result_text, result_rect)
+
+        # Scores
+        player1_text = font.render(player1_score, True, player1.color)
+        player1_rect = player1_text.get_rect(center=(SCREEN_WIDTH // 2, 300))
+        screen.blit(player1_text, player1_rect)
+
+        player2_text = font.render(player2_score, True, player2.color)
+        player2_rect = player2_text.get_rect(center=(SCREEN_WIDTH // 2, 340))
+        screen.blit(player2_text, player2_rect)
+
+        # Exit countdown for both local and network games
+        seconds_left = (screen_duration - (current_time - start_time)) // 1000 + 1
+        exit_text = font.render(f"Closing game in {seconds_left} seconds...", True, WHITE)
+
+        exit_rect = exit_text.get_rect(center=(SCREEN_WIDTH // 2, 400))
+        screen.blit(exit_text, exit_rect)
+
+        pygame.display.flip()
+        pygame.time.delay(10)  # Prevent high CPU usage
+
+    # For local games, return to allow continuing
+    return
+
 
 def draw_grid(screen, game_manager, grid_x, grid_y, mouse_grid_x, mouse_grid_y):
     """
@@ -224,6 +313,7 @@ def draw_grid(screen, game_manager, grid_x, grid_y, mouse_grid_x, mouse_grid_y):
             CELL_SIZE
         )
         pygame.draw.rect(screen, GREEN, highlight_rect, 2)
+
 
 def draw_action_description(screen, font, game_manager, action_buttons, mouse_pos):
     """
@@ -247,7 +337,6 @@ def draw_action_description(screen, font, game_manager, action_buttons, mouse_po
             break
 
 
-
 def render_game(screen, game_manager, font, title_font, action_buttons, grid_x, grid_y, mouse_grid_x, mouse_grid_y):
     """
     Render the game screen.
@@ -259,11 +348,11 @@ def render_game(screen, game_manager, font, title_font, action_buttons, grid_x, 
     draw_grid(screen, game_manager, grid_x, grid_y, mouse_grid_x, mouse_grid_y)
     draw_player_infos(screen, game_manager, action_buttons, font)
     draw_game_info(screen, game_manager, font, title_font)
-    draw_game_over(screen, game_manager, title_font)
     draw_action_description(screen, font, game_manager, action_buttons, mouse_pos)
 
     # Update the display
     pygame.display.flip()
+
 
 def show_main_menu():
     """
@@ -568,6 +657,11 @@ while running:
     if game_manager.is_networked and not game_manager.check_network_connection():
         print("Network disconnection detected!")
         handle_network_disconnection(screen, game_manager, font, title_font)
+
+     # == Check for game over
+    if game_manager.game_over:
+        show_game_over_screen(screen, game_manager, title_font, font)
+
 
     # == Get Mouse position
     mouse_pos = pygame.mouse.get_pos()

@@ -1,9 +1,8 @@
 import pygame
-from cellular_automaton import SimpleExpansion
+from cellular_automaton import SimpleExpansion, SnakePattern, RootGrowth
 from player import Player
 from grid import Grid
 from player_action import PlayerAction
-from cellular_automaton import CellularAutomaton
 
 
 class GameManager:
@@ -12,7 +11,7 @@ class GameManager:
         self.players = []
         self.current_player_index = 0
         self.selected_action = None # Stores the selected action as object
-        self.total_turns = 10
+        self.total_turns = 3
         self.current_turn = 1
         self.game_over = False
 
@@ -57,25 +56,25 @@ class GameManager:
         snake_pattern = PlayerAction(
             "Snake Attack",
             "Slithers like a snake",
-            SimpleExpansion, # Change Later
-            generations = 10
+            SnakePattern,
+            generations = 20
         )
 
         root_growth = PlayerAction(
             "Root Growth",
             "Spread like a tree root",
-            SimpleExpansion, # Change Later
+            RootGrowth,
             generations = 7
         )
 
         # Add actions to players
         player1.add_action(simple_expansion)
-        player1.add_action(simple_expansion)
-        player1.add_action(simple_expansion)
+        player1.add_action(snake_pattern)
+        player1.add_action(root_growth)
 
         player2.add_action(simple_expansion)
-        player2.add_action(simple_expansion)
-        player2.add_action(simple_expansion)
+        player2.add_action(snake_pattern)
+        player2.add_action(root_growth)
 
         self.players = [player1, player2]
 
