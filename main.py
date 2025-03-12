@@ -28,7 +28,6 @@ screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT))
 pygame.display.set_caption(WINDOW_TITLE)
 
 
-
 # ==================== FUNCTION DEFINITIONS ==================== #
 
 def handle_input(mouse_pos, grid_x, grid_y, game_manager, action_buttons):
@@ -458,6 +457,53 @@ def join_game_screen():
         pygame.display.flip()
         clock.tick(30)
 
+
+def handle_network_disconnection(screen, game_manager, font, title_font):
+    """
+    Shows a disconnection message and exits the game after a delay.
+    """
+    # Clean up network resources
+    if game_manager.network_manager:
+        game_manager.network_manager.disconnect()
+
+    # Display message duration
+    DISCONNECT_MESSAGE_DURATION = 3000  # 3 seconds
+    start_time = pygame.time.get_ticks()
+
+    # Display disconnection message until duration expires
+    while pygame.time.get_ticks() - start_time < DISCONNECT_MESSAGE_DURATION:
+        # Handle quit events
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                pygame.quit()
+                sys.exit()
+
+        # Draw disconnection message
+        screen.fill(BLACK)
+
+        # Main disconnect message
+        disconnect_text = title_font.render("Connection Lost!", True, (255, 50, 50))
+        text_rect = disconnect_text.get_rect(center=(SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2 - 30))
+
+        # Background for text
+        bg_rect = text_rect.inflate(20, 20)
+        pygame.draw.rect(screen, (50, 50, 50), bg_rect)
+        pygame.draw.rect(screen, (255, 50, 50), bg_rect, 2)
+
+        screen.blit(disconnect_text, text_rect)
+
+        # Exiting message
+        exit_text = font.render("Exiting game...", True, WHITE)
+        exit_rect = exit_text.get_rect(center=(SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2 + 20))
+        screen.blit(exit_text, exit_rect)
+
+        pygame.display.flip()
+        pygame.time.delay(10)  # Prevent high CPU usage
+
+    # Exit game
+    pygame.quit()
+    sys.exit()
+
 # ==================== GAME MENU & NETWORK MODE ==================== #
 
 # == Show main menu first
@@ -513,6 +559,11 @@ mouse_grid_x, mouse_grid_y = 0,0
 while running:
     # == Get current time for animation timing
     current_time = pygame.time.get_ticks()
+
+    # == Handle network disconnection
+    if game_manager.is_networked and not game_manager.check_network_connection():
+        print("Network disconnection detected!")
+        handle_network_disconnection(screen, game_manager, font, title_font)
 
     # == Get Mouse position
     mouse_pos = pygame.mouse.get_pos()

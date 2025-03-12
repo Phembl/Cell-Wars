@@ -276,6 +276,19 @@ class GameManager:
         else:
             print(f"Received unknown message type: {message}")
 
+    def check_network_connection(self):
+        """
+        Checks if the network connection is still active.
+        Returns True if connected or not a networked game, False if disconnected.
+        """
+        if not self.is_networked:
+            return True
+
+        if self.network_manager and not self.network_manager.connected:
+            return False
+
+        return True
+
     def update (self, current_time):
         """
         Update game state - call this every frame.
