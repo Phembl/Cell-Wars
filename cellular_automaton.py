@@ -30,13 +30,12 @@ class CellularAutomaton:
     def set_starting_cell(self, x, y):
         """
         Set the starting cell coordinate.
+        Returns the initial cell change without modifying the grid.
         """
-        if 0 <= x < self.grid.width and 0 <= y < self.grid.height: # Defensive programming, avoids error if non-existing coordinate is given
-            # Set the cell to the player's color
-            self.grid.set_cell(x, y, self.player_id)
+        if 0 <= x < self.grid.width and 0 <= y < self.grid.height:
+            # Add starting cell to possible_cells
             self.possible_cells.add((x, y))
-
-            #Return the starting cell
+            # Return the change without applying it
             return [[x, y, self.player_id]]
         return []
 
@@ -72,32 +71,65 @@ class CellularAutomaton:
     def run(self):
         """
         Run the automaton for the specified number of generations.
+        Simulates and collects changes without applying them to the grid.
         """
-        for _ in range(self.generations): # Usage of _ because counter is never used and doesn't require variable (pure convention)
+        # Create a temporary grid for simulation
+        temp_grid = []
+        for y in range(self.grid.height):
+            row = []
+            for x in range(self.grid.width):
+                row.append(self.grid.get_cell(x, y))
+            temp_grid.append(row)
+
+        # Set the initial cell in our temp grid
+        for x, y in self.possible_cells:
+            temp_grid[y][x] = self.player_id
+
+        # Store all changes
+        all_changes = []
+
+        # Implement a temporary can_conquer method for the temp grid
+        def temp_can_conquer(x, y):
+            if not (0 <= x < self.grid.width and 0 <= y < self.grid.height):
+                return False
+
+            cell_state = temp_grid[y][x]
+
+            # Neutral cell
+            if cell_state == self.grid.NEUTRAL:
+                return self.overwrite_neutral
+
+            # Enemy cell
+            if cell_state != self.player_id:
+                return self.overwrite_enemy
+
+            # Own cell (can't be conquered)
+            return False
+
+        # Run for specified generations
+        for _ in range(self.generations):
             # If no possible cells remain, stop early
             if not self.possible_cells:
                 break
 
-            # Perform one step
-            self.step()
+            # Create temp storage for this generation's changes
+            next_gen_cells = set()
+            generation_changes = []
 
-            # Add a delay to see the growth
-            pygame.display.flip()  # Update the display to show changes
-            pygame.time.delay(200)  # Delay for 100 milliseconds
+            # Let the subclass simulate one step using the temp grid
+            for current_x, current_y in self.possible_cells:
+                # Here we'll need to call a method that handles the specific pattern
+                # but works on the temp grid instead of the real one
+                changes = self.simulate_step(current_x, current_y, temp_grid, temp_can_conquer, next_gen_cells)
+                generation_changes.extend(changes)
 
-        # Return the total number of cells conquered
-        return self.count_player_cells()
+            # Update our possible cells for next generation
+            self.possible_cells = next_gen_cells
 
-    def count_player_cells(self):
-        """
-        Counts the number of cells owned by the player.
-        """
-        count = 0
-        for y in range(0, self.grid.height):
-            for x in range(0, self.grid.width):
-                if self.grid.get_cell(x, y) == self.player_id:
-                    count += 1
-        return count
+            # Add this generation's changes to our full list
+            all_changes.extend(generation_changes)
+
+        return all_changes
 
 class SimpleExpansion(CellularAutomaton):
     """
@@ -109,40 +141,34 @@ class SimpleExpansion(CellularAutomaton):
     Subclass of CellularAutomaton.
      """
 
-    def step(self):
-        # Create an empty set to store the new possible cells for the next generation
-        next_generation_cells = set()
-        changes = [] # Tracks changes for networking
+    def simulate_step(self, current_x, current_y, temp_grid, can_conquer_func, next_gen_cells):
+        """
+        Simulate one step of the simple expansion automaton for a specific cell.
+        """
+        changes = []
 
-        for current_x, current_y in self.possible_cells:
-            # For each current cell, check all four neighboring directions
+        # Check cell above
+        if can_conquer_func(current_x, current_y - 1):
+            temp_grid[current_y - 1][current_x] = self.player_id
+            next_gen_cells.add((current_x, current_y - 1))
+            changes.append([current_x, current_y - 1, self.player_id])
 
-            # Check cell above
-            if self.can_conquer_cell(current_x, current_y - 1):
-                self.grid.set_cell(current_x, current_y - 1, self.player_id)
-                next_generation_cells.add((current_x, current_y - 1))
-                changes.append([current_x, current_y - 1, self.player_id])
+        # Check cell below
+        if can_conquer_func(current_x, current_y + 1):
+            temp_grid[current_y + 1][current_x] = self.player_id
+            next_gen_cells.add((current_x, current_y + 1))
+            changes.append([current_x, current_y + 1, self.player_id])
 
-            # Check cell below
-            if self.can_conquer_cell(current_x, current_y + 1):
-                self.grid.set_cell(current_x, current_y + 1, self.player_id)
-                next_generation_cells.add((current_x, current_y + 1))
-                changes.append([current_x, current_y + 1, self.player_id])
+        # Check cell left
+        if can_conquer_func(current_x - 1, current_y):
+            temp_grid[current_y][current_x - 1] = self.player_id
+            next_gen_cells.add((current_x - 1, current_y))
+            changes.append([current_x - 1, current_y, self.player_id])
 
-            # Check cell left
-            if self.can_conquer_cell(current_x - 1, current_y):
-                self.grid.set_cell(current_x - 1, current_y, self.player_id)
-                next_generation_cells.add((current_x - 1, current_y))
-                changes.append([current_x - 1, current_y, self.player_id])
+        # Check cell right
+        if can_conquer_func(current_x + 1, current_y):
+            temp_grid[current_y][current_x + 1] = self.player_id
+            next_gen_cells.add((current_x + 1, current_y))
+            changes.append([current_x + 1, current_y, self.player_id])
 
-            # Check cell right
-            if self.can_conquer_cell(current_x + 1, current_y):
-                self.grid.set_cell(current_x + 1, current_y, self.player_id)
-                next_generation_cells.add((current_x + 1, current_y))
-                changes.append([current_x + 1, current_y, self.player_id])
-
-        # After processing all current cells, update our possible_cells for the next step
-        self.possible_cells = next_generation_cells
-
-        # Return the changes for networking
         return changes

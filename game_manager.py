@@ -20,14 +20,14 @@ class GameManager:
         self.animation_in_progress = False
         self.animation_changes = None # List of all changes to animate (format: [[x1,y1,player_id], [x2,y2,player_id], ...])
         self.animation_index = 0
-        self.step_delay = 100  # milliseconds between animation steps
+        self.step_delay = 50  # milliseconds between animation steps
         self.next_step_time = 0
         self.changes_per_step = 1  # Number of cells to update per animation step
 
         # Network properties
         self.network_manager = network_manager
-        self.is_host = network_manager is not None and hasattr(network_manager, 'host_game')
-        self.is_client = network_manager is not None and hasattr(network_manager, 'join_game')
+        self.is_host = network_manager is not None and network_manager.__class__.__name__ == 'NetworkHost'
+        self.is_client = network_manager is not None and network_manager.__class__.__name__ == 'NetworkClient'
         self.is_networked = network_manager is not None
         self.waiting_for_remote = False # True when waiting for the other player to take their turn
 
@@ -119,22 +119,17 @@ class GameManager:
         
         self.selected_action = action
 
-    #Needs to be discussed further:
+
     def apply_action(self, grid_x, grid_y):
         """
         Apply the selected action at the given coordinates.
-        - Verifies that an action is selected, the game isn't over, and no animation is in progress. Verify that it's your turn.
-        - Creates the automaton from the selected action and sets the starting cell.
-        - Runs the automaton and captures all changes.
-        - Creates a message with:
-                - The type: "action_result"
-                - The action name
-                - Starting coordinates
-                - List of all cell changes that occurred
-        - Sends this message to the other player and starts animation playback locally.
+        - Verifies that an action is selected, the game isn't over, and no animation is in progress
+        - Creates the automaton from the selected action and sets the starting cell
+        - Runs the automaton and captures all changes
+        - In networked mode, sends these changes to the other player
+        - Starts animation playback in all cases
         """
-
-        #Check if we can apply the action
+        # Check if we can apply the action
         if not self.selected_action or self.game_over or self.animation_in_progress:
             return False
 
@@ -144,18 +139,17 @@ class GameManager:
 
         current_player = self.get_current_player()
 
-
         # Create the automaton
         automaton = self.selected_action.create_automaton(self.grid, current_player.player_id)
 
         # Set starting cell and get initial grid changes
         initial_grid_changes = automaton.set_starting_cell(grid_x, grid_y)
 
-        if self.is_networked:
-            # Run and capture all changes
-            all_changes = initial_grid_changes + automaton.run()
+        # Run and capture all changes
+        all_changes = initial_grid_changes + automaton.run()
 
-            # Send to other player
+        # If in networked mode, send to other player
+        if self.is_networked:
             message = {
                 "type": "action_result",
                 "action_name": self.selected_action.name,
@@ -165,14 +159,8 @@ class GameManager:
             }
             self.network_manager.send_message(message)
 
-            # Start animated playback
-            self.start_animation_playback(all_changes)
-
-        else:
-            # Local game - just run normally
-            automaton.run()
-            self.selected_action = None
-            self.next_turn()
+        # Start animated playback (for both local and networked games)
+        self.start_animation_playback(all_changes)
 
         return True
 
@@ -227,24 +215,29 @@ class GameManager:
             # Apply next batch of changes
             changes_applied = 0
 
-            while changes_applied < self.changes_per_step:
-                if self.animation_index >= len(self.animation_changes):
-                    # Animation complete
-                    self.animation_in_progress = False
-                    self.animation_changes = None
+            while changes_applied < self.changes_per_step and self.animation_index < len(self.animation_changes):
+                # Get the next change
+                change = self.animation_changes[self.animation_index]
+                x, y, player_id = change
 
-                    # Move to next turn
-                    self.next_turn()
-                    break
+                # Apply the change
+                self.grid.set_cell(x, y, player_id)
 
-            change = self.animation_changes[self.animation_index]
-            x,y, player_id = change
-            self.grid.set_cell(x, y, player_id)
-            self.animation_index += 1
-            changes_applied += 1
+                # Update counters
+                self.animation_index += 1
+                changes_applied += 1
 
-        # Schedule next batch
-        self.next_step_time = current_time + self.step_delay
+            # Schedule next batch
+            self.next_step_time = current_time + self.step_delay
+
+            # Check if animation is complete
+            if self.animation_index >= len(self.animation_changes):
+                # Animation complete
+                self.animation_in_progress = False
+                self.animation_changes = None
+
+                # Move to next turn
+                self.next_turn()
 
     def is_my_turn(self):
         """
@@ -275,12 +268,13 @@ class GameManager:
         if not message:
             return
 
-        if message["type"] == "action_result":
+        if message.get("type") == "action_result" and "changes" in message:
             # Extract data
             changes = message["changes"]
-
-        # Start animated playback
-        self.start_animation_playback(changes)
+            # Start animated playback
+            self.start_animation_playback(changes)
+        else:
+            print(f"Received unknown message type: {message}")
 
     def update (self, current_time):
         """

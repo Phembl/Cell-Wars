@@ -172,7 +172,7 @@ def draw_game_info(screen, game_manager, font, title_font):
             status_color = (100, 255, 100)  # Light green
 
         status_surface = font.render(status_text, True, status_color)
-        screen.blit(status_surface, (SCREEN_WIDTH // 2 - status_surface.get_width() // 2, 90))
+        screen.blit(status_surface, (SCREEN_WIDTH // 2 - status_surface.get_width() // 2, 75))
 
 
 def draw_game_over(screen, game_manager, title_font):
@@ -296,19 +296,19 @@ def show_main_menu():
         screen.blit(title_surface, (SCREEN_WIDTH // 2 - title_surface.get_width() // 2, 100))
 
         # Draw buttons
-        pygame.draw.rect(screen, (0, 175, 185), local_button)  # Verdigris
+        pygame.draw.rect(screen, (0, 175, 185), local_button)
         pygame.draw.rect(screen, WHITE, local_button, 2)  # White border
         local_text = font.render("Local Game", True, WHITE)
         screen.blit(local_text, (local_button.centerx - local_text.get_width() // 2,
                                  local_button.centery - local_text.get_height() // 2))
 
-        pygame.draw.rect(screen, (0, 175, 185), host_button)  # Verdigris
+        pygame.draw.rect(screen, (0, 175, 185), host_button)
         pygame.draw.rect(screen, WHITE, host_button, 2)  # White border
         host_text = font.render("Host Game", True, WHITE)
         screen.blit(host_text, (host_button.centerx - host_text.get_width() // 2,
                                 host_button.centery - host_text.get_height() // 2))
 
-        pygame.draw.rect(screen, (240, 113, 103), join_button)  # Bittersweet
+        pygame.draw.rect(screen, (0, 175, 185), join_button)
         pygame.draw.rect(screen, WHITE, join_button, 2)  # White border
         join_text = font.render("Join Game", True, WHITE)
         screen.blit(join_text, (join_button.centerx - join_text.get_width() // 2,
@@ -482,6 +482,8 @@ elif game_mode == "join":
 # == Create the game manager
 game_manager = GameManager(GRID_SIZE, GRID_SIZE, CELL_SIZE, network_manager)
 game_manager.initialize_players("Player 1", "Player 2")
+if game_manager.is_networked:
+    game_manager.waiting_for_remote = not game_manager.is_my_turn()
 
 # == Create action buttons
 action_buttons = []
@@ -501,8 +503,6 @@ grid_surface_width = GRID_SIZE * CELL_SIZE
 grid_surface_height = GRID_SIZE * CELL_SIZE
 grid_x = (SCREEN_WIDTH - GRID_SIZE * CELL_SIZE) // 2
 grid_y = (SCREEN_HEIGHT - GRID_SIZE * CELL_SIZE) // 2
-
-
 
 
 # ==================== GAME LOOP ==================== #
