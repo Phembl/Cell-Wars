@@ -1,4 +1,5 @@
 import pygame, sys
+from pathlib import Path #Imports path finding functionality (only used for font file)
 from game_manager import GameManager #Imports GameManager class
 from ui import Button #Imports Button class
 
@@ -19,9 +20,12 @@ WHITE = (240, 246, 239)
 GREEN = (0,255,0)
 
 # == Font
-font = pygame.font.Font("mondwest.ttf", 24)
-title_font = pygame.font.Font("mondwest.ttf", 32)
-button_font = pygame.font.Font("mondwest.ttf", 18)
+current_dir = Path(__file__).parent
+main_dir = current_dir.parent
+font_path = main_dir / "font/mondwest.ttf"
+font = pygame.font.Font(font_path, 24)
+title_font = pygame.font.Font(font_path, 32)
+button_font = pygame.font.Font(font_path, 18)
 
 # == Game window
 screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT))
