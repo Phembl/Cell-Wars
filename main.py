@@ -23,35 +23,11 @@ font = pygame.font.Font("mondwest.ttf", 24)
 title_font = pygame.font.Font("mondwest.ttf", 32)
 button_font = pygame.font.Font("mondwest.ttf", 18)
 
-
-# ==================== GAME SETUP ==================== #
-
-# == Create game window
+# == Game window
 screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT))
 pygame.display.set_caption(WINDOW_TITLE)
 
-# == Create the game manager
-game_manager = GameManager(GRID_SIZE, GRID_SIZE, CELL_SIZE)
-game_manager.initialize_players("Player 1", "Player 2")
 
-# == Create action buttons
-action_buttons = []
-
-# ==== Player 1 buttons (left side)
-for i, action in enumerate(game_manager.players[0].actions):
-    button_rect = pygame.Rect(50, 250 + i * 50, 130, 40)
-    action_buttons.append(Button(button_rect, action.name, game_manager.players[0].color))
-
-# ==== Player 2 buttons (right side)
-for i, action in enumerate(game_manager.players[1].actions):
-    button_rect = pygame.Rect(SCREEN_WIDTH - 180, 250 + i * 50,130,40)
-    action_buttons.append(Button(button_rect, action.name, game_manager.players[1].color))
-
-# == Calculate grid coordinates
-grid_surface_width = GRID_SIZE * CELL_SIZE
-grid_surface_height = GRID_SIZE * CELL_SIZE
-grid_x = (SCREEN_WIDTH - GRID_SIZE * CELL_SIZE) // 2
-grid_y = (SCREEN_HEIGHT - GRID_SIZE * CELL_SIZE) // 2
 
 # ==================== FUNCTION DEFINITIONS ==================== #
 
@@ -76,13 +52,20 @@ def handle_input(mouse_pos, grid_x, grid_y, game_manager, action_buttons):
             return False, mouse_grid_x, mouse_grid_y
         elif event.type == pygame.MOUSEBUTTONDOWN:
             # Left click
-            if event.button == 1 and not game_manager.game_over:
+            if event.button == 1 and not game_manager.game_over and not game_manager.animation_in_progress:
+
+                # Check for network turn (add this block)
+                if game_manager.is_networked and not game_manager.is_my_turn():
+                    # Not our turn in network game, ignore input
+                    continue
+
                 # Check if an action button was clicked
                 handle_button_click(action_buttons, mouse_pos, game_manager)
 
                 # Check if grid was clicked and action was selected
                 if game_manager.selected_action and (0 <= mouse_grid_x < GRID_SIZE and 0 <= mouse_grid_y < GRID_SIZE):
                     game_manager.apply_action(mouse_grid_x, mouse_grid_y)
+
                     # Clear button selection
                     for button in action_buttons:
                         button.selected = False
@@ -179,6 +162,18 @@ def draw_game_info(screen, game_manager, font, title_font):
         action_rect = action_surface.get_rect(center=(SCREEN_WIDTH//2, SCREEN_HEIGHT - 30))
         screen.blit(action_surface, action_rect)
 
+    # Network status (if networked)
+    if game_manager.is_networked:
+        if game_manager.waiting_for_remote:
+            status_text = "Waiting for other player..."
+            status_color = (255, 200, 100)  # Orange-yellow
+        else:
+            status_text = "Your turn"
+            status_color = (100, 255, 100)  # Light green
+
+        status_surface = font.render(status_text, True, status_color)
+        screen.blit(status_surface, (SCREEN_WIDTH // 2 - status_surface.get_width() // 2, 90))
+
 
 def draw_game_over(screen, game_manager, title_font):
     """
@@ -267,20 +262,273 @@ def render_game(screen, game_manager, font, title_font, action_buttons, grid_x, 
     # Update the display
     pygame.display.flip()
 
+def show_main_menu():
+    """
+    Show a simple main menu to choose game mode.
+    """
+    # Create button rectangles
+    local_button = pygame.Rect(SCREEN_WIDTH // 2 - 100, 200, 200, 50)
+    host_button = pygame.Rect(SCREEN_WIDTH // 2 - 100, 270, 200, 50)
+    join_button = pygame.Rect(SCREEN_WIDTH // 2 - 100, 340, 200, 50)
+
+    # Main menu loop
+    menu_running = True
+    while menu_running:
+        # Handle events
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                pygame.quit()
+                sys.exit()
+            elif event.type == pygame.MOUSEBUTTONDOWN:
+                mouse_pos = pygame.mouse.get_pos()
+                if local_button.collidepoint(mouse_pos):
+                    return "local"
+                elif host_button.collidepoint(mouse_pos):
+                    return "host"
+                elif join_button.collidepoint(mouse_pos):
+                    return "join"
+
+        # Draw menu
+        screen.fill(BLACK)
+
+        # Draw title
+        title_surface = title_font.render("Cell Wars", True, WHITE)
+        screen.blit(title_surface, (SCREEN_WIDTH // 2 - title_surface.get_width() // 2, 100))
+
+        # Draw buttons
+        pygame.draw.rect(screen, (0, 175, 185), local_button)  # Verdigris
+        pygame.draw.rect(screen, WHITE, local_button, 2)  # White border
+        local_text = font.render("Local Game", True, WHITE)
+        screen.blit(local_text, (local_button.centerx - local_text.get_width() // 2,
+                                 local_button.centery - local_text.get_height() // 2))
+
+        pygame.draw.rect(screen, (0, 175, 185), host_button)  # Verdigris
+        pygame.draw.rect(screen, WHITE, host_button, 2)  # White border
+        host_text = font.render("Host Game", True, WHITE)
+        screen.blit(host_text, (host_button.centerx - host_text.get_width() // 2,
+                                host_button.centery - host_text.get_height() // 2))
+
+        pygame.draw.rect(screen, (240, 113, 103), join_button)  # Bittersweet
+        pygame.draw.rect(screen, WHITE, join_button, 2)  # White border
+        join_text = font.render("Join Game", True, WHITE)
+        screen.blit(join_text, (join_button.centerx - join_text.get_width() // 2,
+                                join_button.centery - join_text.get_height() // 2))
+
+        # Update display
+        pygame.display.flip()
+
+        # Cap framerate
+        pygame.time.Clock().tick(30)
+
+
+def host_game_screen():
+    """
+    Show hosting screen and wait for connection.
+    """
+
+    # Create network host
+    from network import NetworkHost
+    network = NetworkHost()
+
+    # Get local IP
+    import socket
+    try:
+        local_ip = socket.gethostbyname(socket.gethostname())
+    except:
+        local_ip = "Unknown"
+
+    # Start hosting in background thread
+    connected = [False]
+
+    def start_hosting():
+        connected[0] = network.host_game()
+
+    import threading
+    hosting_thread = threading.Thread(target=start_hosting, daemon=True)
+    hosting_thread.start()
+
+    # Wait for connection
+    clock = pygame.time.Clock()
+    dots = ""
+    dot_time = 0
+
+    while not connected[0] and hosting_thread.is_alive():
+        current_time = pygame.time.get_ticks()
+
+        # Update dots animation every 500ms
+        if current_time - dot_time > 500:
+            dots = "." * ((len(dots) + 1) % 4)
+            dot_time = current_time
+
+        # Handle events
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                network.disconnect()
+                pygame.quit()
+                sys.exit()
+
+        # Draw waiting screen
+        screen.fill(BLACK)
+
+        title = title_font.render("Hosting Game", True, WHITE)
+        ip_text = font.render(f"Your IP: {local_ip}", True, WHITE)
+        port_text = font.render(f"Port: {network.default_port}", True, WHITE)
+        waiting_text = font.render(f"Waiting for player to connect{dots}", True, WHITE)
+
+        screen.blit(title, (SCREEN_WIDTH // 2 - title.get_width() // 2, 100))
+        screen.blit(ip_text, (SCREEN_WIDTH // 2 - ip_text.get_width() // 2, 180))
+        screen.blit(port_text, (SCREEN_WIDTH // 2 - port_text.get_width() // 2, 220))
+        screen.blit(waiting_text, (SCREEN_WIDTH // 2 - waiting_text.get_width() // 2, 280))
+
+        pygame.display.flip()
+        clock.tick(30)
+
+    # Check result
+    if connected[0]:
+        return network
+    else:
+        return None
+
+
+def join_game_screen():
+    """
+    Show joining screen and get host IP.
+    """
+    from network import NetworkClient
+
+    # IP input variables
+    ip_text = ""
+
+    # Input loop
+    clock = pygame.time.Clock()
+
+    while True:
+        # Handle events
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                pygame.quit()
+                sys.exit()
+            elif event.type == pygame.KEYDOWN:
+                if event.key == pygame.K_RETURN:
+                    # Try to connect with entered IP
+                    if ip_text:
+                        # Show "Connecting..." message
+                        screen.fill(BLACK)
+                        connecting_text = font.render(f"Connecting to {ip_text}...", True, WHITE)
+                        screen.blit(connecting_text, (SCREEN_WIDTH // 2 - connecting_text.get_width() // 2, 200))
+                        pygame.display.flip()
+
+                        # Try to connect
+                        network = NetworkClient()
+                        if network.join_game(ip_text):
+                            return network
+                        else:
+                            # Show error briefly
+                            screen.fill(BLACK)
+                            error_text = font.render("Connection failed!", True, (255, 100, 100))
+                            screen.blit(error_text, (SCREEN_WIDTH // 2 - error_text.get_width() // 2, 200))
+                            pygame.display.flip()
+                            pygame.time.wait(2000)  # Show error for 2 seconds
+                            ip_text = ""  # Clear for retry
+                elif event.key == pygame.K_BACKSPACE:
+                    ip_text = ip_text[:-1]
+                elif event.unicode in "0123456789.":
+                    # Only allow numbers and periods for IP address
+                    if len(ip_text) < 15:  # Reasonable length limit
+                        ip_text += event.unicode
+
+        # Draw IP input screen
+        screen.fill(BLACK)
+
+        title = title_font.render("Join Game", True, WHITE)
+        prompt = font.render("Enter Host IP Address:", True, WHITE)
+        current_ip = font.render(ip_text, True, WHITE)
+        hint = font.render("(Press Enter when done)", True, WHITE)
+
+        screen.blit(title, (SCREEN_WIDTH // 2 - title.get_width() // 2, 100))
+        screen.blit(prompt, (SCREEN_WIDTH // 2 - prompt.get_width() // 2, 180))
+
+        # IP input box
+        input_box = pygame.Rect(SCREEN_WIDTH // 2 - 100, 220, 200, 40)
+        pygame.draw.rect(screen, WHITE, input_box, 2)
+        screen.blit(current_ip, (input_box.x + 10, input_box.y + 10))
+
+        screen.blit(hint, (SCREEN_WIDTH // 2 - hint.get_width() // 2, 280))
+
+        pygame.display.flip()
+        clock.tick(30)
+
+# ==================== GAME MENU & NETWORK MODE ==================== #
+
+# == Show main menu first
+game_mode = show_main_menu()
+
+# Initialize network manager based on mode
+network_manager = None
+if game_mode == "host":
+    network_manager = host_game_screen()
+    if not network_manager:  # If hosting failed
+        pygame.quit()
+        sys.exit()
+elif game_mode == "join":
+    network_manager = join_game_screen()
+    if not network_manager:  # If joining failed
+        pygame.quit()
+        sys.exit()
+
+
+# ==================== GAME SETUP ==================== #
+
+# == Create the game manager
+game_manager = GameManager(GRID_SIZE, GRID_SIZE, CELL_SIZE, network_manager)
+game_manager.initialize_players("Player 1", "Player 2")
+
+# == Create action buttons
+action_buttons = []
+
+# ==== Player 1 buttons (left side)
+for i, action in enumerate(game_manager.players[0].actions):
+    button_rect = pygame.Rect(50, 250 + i * 50, 130, 40)
+    action_buttons.append(Button(button_rect, action.name, game_manager.players[0].color))
+
+# ==== Player 2 buttons (right side)
+for i, action in enumerate(game_manager.players[1].actions):
+    button_rect = pygame.Rect(SCREEN_WIDTH - 180, 250 + i * 50,130,40)
+    action_buttons.append(Button(button_rect, action.name, game_manager.players[1].color))
+
+# == Calculate grid coordinates
+grid_surface_width = GRID_SIZE * CELL_SIZE
+grid_surface_height = GRID_SIZE * CELL_SIZE
+grid_x = (SCREEN_WIDTH - GRID_SIZE * CELL_SIZE) // 2
+grid_y = (SCREEN_HEIGHT - GRID_SIZE * CELL_SIZE) // 2
+
+
+
+
 # ==================== GAME LOOP ==================== #
 
 running = True
 mouse_grid_x, mouse_grid_y = 0,0
 
 while running:
+    # == Get current time for animation timing
+    current_time = pygame.time.get_ticks()
+
     # == Get Mouse position
     mouse_pos = pygame.mouse.get_pos()
 
     # == Handle input
     running, mouse_grid_x, mouse_grid_y = handle_input(mouse_pos, grid_x, grid_y, game_manager, action_buttons)
 
+    # Update game state (for animation and networking)
+    game_manager.update(current_time)
+
     # == Render game
     render_game(screen, game_manager, font, title_font, action_buttons, grid_x, grid_y, mouse_grid_x, mouse_grid_y)
+
+# == Network cleanup
+if network_manager:
+    network_manager.disconnect()
 
 # == Quit the game
 pygame.quit()
