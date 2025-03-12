@@ -272,58 +272,105 @@ class SnakePattern(CellularAutomaton):
 class RootGrowth(CellularAutomaton):
     """
     A cellular automaton that mimics how tree roots grow and branch out.
-    This pattern starts from a single cell and grows outward with branching
-    patterns that resemble natural root systems.
+    This pattern creates a natural-looking root system with rapidly decreasing
+    probability of growth for each direction checked and each generation.
 
     Subclass of CellularAutomaton.
     """
 
     def __init__(self, grid, player_id, generations=7, overwrite_neutral=True, overwrite_enemy=False):
+        # Call the parent class constructor to set up basic properties
         super().__init__(grid, player_id, generations, overwrite_neutral, overwrite_enemy)
-        # Probabilities that control growth behavior
-        self.branch_probability = 0.3  # Chance to branch out in a new direction
-        self.continue_probability = 0.8  # Chance to continue growing from existing cells
+
+        # The initial conquest probability for the first cell (90% chance)
+        self.initial_probability = 0.9
+
+        # How much to reduce probability for each new direction checked
+        self.probability_decrease = 0.3
+
+        # How much to reduce the starting probability for each new generation of cells
+        self.generation_decrease = 0.25
+
+        # Maximum generation - roots stop growing after this many steps
+        self.max_generations = generations
+
+        # Dictionary to track each cell's generation number
+        self.cell_generations = {}
+
+    def set_starting_cell(self, x, y):
+        """Override to initialize the root's starting position and generation tracking"""
+        if 0 <= x < self.grid.width and 0 <= y < self.grid.height:
+            self.possible_cells = set([(x, y)])
+            self.cell_generations[(x, y)] = 0  # Starting cell is generation 0
+            return [[x, y, self.player_id]]
+        return []
 
     def simulate_step(self, current_x, current_y, temp_grid, can_conquer_func, next_gen_cells):
         """
-        Simulate one step of the root growth automaton for a specific cell.
+        Simulate one step of the root growth pattern for a specific cell.
+
+        Args:
+            current_x, current_y: The coordinates of the current cell
+            temp_grid: Temporary grid for simulation
+            can_conquer_func: Function to check if a cell can be conquered
+            next_gen_cells: Set to store cells for the next generation
+
+        Returns:
+            List of changes made during this step
         """
+        # This list will store all changes we make
         changes = []
-        directions = [(0, -1), (1, 0), (0, 1), (-1, 0)]  # Up, Right, Down, Left
 
-        # For each active cell, we may grow in multiple directions
-        # First, try to continue growing from this cell
-        if random.random() < self.continue_probability:
-            # Randomize direction order for more natural-looking growth
-            random.shuffle(directions)
+        # Get this cell's generation number
+        current_generation = self.cell_generations.get((current_x, current_y), 0)
 
-            # Try each direction
-            for dx, dy in directions:
-                new_x, new_y = current_x + dx, current_y + dy
+        # If we've reached the maximum generation, stop growing from this cell
+        if current_generation >= self.max_generations - 1:
+            return []
 
-                # Check if we can grow to this cell
-                if can_conquer_func(new_x, new_y):
-                    # Update the temp grid
+        # Calculate the starting probability for this cell
+        # Each successive generation has a lower starting probability
+        start_probability = max(0.1, self.initial_probability - (current_generation * self.generation_decrease))
+
+        # Define all eight possible directions we can grow in (orthogonal and diagonal)
+        # The eight directions are: Up, Up-Right, Right, Down-Right, Down, Down-Left, Left, Up-Left
+        all_directions = [
+            (0, -1), (1, -1), (1, 0), (1, 1), (0, 1), (-1, 1), (-1, 0), (-1, -1)
+        ]
+
+        # Shuffle the directions to randomize which one we try first
+        # This creates more natural, unpredictable growth patterns
+        random.shuffle(all_directions)
+
+        # Keep track of our current conquest probability
+        current_probability = start_probability
+
+        # Try each direction with decreasing probability
+        for dx, dy in all_directions:
+            # Calculate the new coordinates
+            new_x = current_x + dx
+            new_y = current_y + dy
+
+            # Check if we can grow to this cell (is it empty or can we take it over?)
+            if can_conquer_func(new_x, new_y):
+                # Roll a random number to see if we conquer this cell
+                if random.random() < current_probability:
+                    # Success! Mark this cell as belonging to our player
                     temp_grid[new_y][new_x] = self.player_id
+
+                    # Add this cell to the next generation set
+                    # This means this cell will be active in the next step
                     next_gen_cells.add((new_x, new_y))
+
+                    # Record the change for animation
                     changes.append([new_x, new_y, self.player_id])
 
-                    # Check if we should branch (try more directions)
-                    if random.random() > self.branch_probability:
-                        # If we shouldn't branch, stop after the first successful growth
-                        break
+                    # Mark this new cell as being one generation higher than its parent
+                    self.cell_generations[(new_x, new_y)] = current_generation + 1
 
-        # Sometimes also try diagonal directions for more organic growth
-        if random.random() < self.branch_probability:
-            diagonal_directions = [(1, 1), (1, -1), (-1, 1), (-1, -1)]
-            random.shuffle(diagonal_directions)
+                # Decrease the probability for the next direction we check
+                # This makes it less likely to grow in multiple directions
+                current_probability = max(0.05, current_probability - self.probability_decrease)
 
-            for dx, dy in diagonal_directions[:2]:  # Limit to at most 2 diagonal growths
-                new_x, new_y = current_x + dx, current_y + dy
-                if can_conquer_func(new_x, new_y):
-                    temp_grid[new_y][new_x] = self.player_id
-                    next_gen_cells.add((new_x, new_y))
-                    changes.append([new_x, new_y, self.player_id])
-                    break  # Just one diagonal growth per cell
-
+        # Return all the changes we made during this step
         return changes
