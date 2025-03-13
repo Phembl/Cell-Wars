@@ -181,92 +181,183 @@ class SnakePattern(CellularAutomaton):
     This pattern grows in a continuous path that can turn and change direction,
     creating a snake-like pattern across the grid.
 
+    The snake can randomly change direction and can overwrite enemy cells.
+
     Subclass of CellularAutomaton.
     """
 
-    def __init__(self, grid, player_id, generations=10, overwrite_neutral=True, overwrite_enemy=False):
-        super().__init__(grid, player_id, generations, overwrite_neutral, overwrite_enemy) #This inits the inherited function
-        self.directions = [(0, -1), (1, 0), (0, 1), (-1, 0)]  # Up, Right, Down, Left
-        self.snake_segments = []  # To keep track of the snake's path
+    def __init__(self, grid, player_id, generations=10, overwrite_neutral=True, overwrite_enemy=True):
+        # Call the parent class's initialization method
+        # We're explicitly setting overwrite_enemy=True to allow the snake to take over enemy cells
+        super().__init__(grid, player_id, generations, overwrite_neutral, overwrite_enemy)
+
+        # Define the four possible directions the snake can move:
+        # (0, -1) is UP: x stays the same, y decreases by 1
+        # (1, 0) is RIGHT: x increases by 1, y stays the same
+        # (0, 1) is DOWN: x stays the same, y increases by 1
+        # (-1, 0) is LEFT: x decreases by 1, y stays the same
+        self.directions = [(0, -1), (1, 0), (0, 1), (-1, 0)]
+
+        # This list will store the history of where our snake has been
+        self.snake_segments = []
+
+        # This variable stores which direction the snake is currently moving
         self.current_direction = None
+
+        # The chance that the snake will randomly change direction
+        # A value of 0.1 means there's a 10% chance on each step
+        self.random_turn_chance = 0.1
+
+        # Make sure our instance explicitly has these settings
+        # This ensures enemy and neutral cells can be conquered
+        self.overwrite_neutral = True
+        self.overwrite_enemy = True
 
     def set_starting_cell(self, x, y):
         """
-        Override to initialize the snake's starting position and direction
+        Initialize the snake's starting position and direction.
+
+        This method is called when the player first selects a cell to start the pattern.
+        It sets up the initial state of the snake.
         """
+        # Check if the coordinates are within the grid boundaries
         if 0 <= x < self.grid.width and 0 <= y < self.grid.height:
+            # Add the starting position to the set of cells we're processing
             self.possible_cells = set([(x, y)])
+
+            # Add the starting position to our snake's history
             self.snake_segments = [(x, y)]
-            self.current_direction = random.choice(self.directions)  # Start in a random direction
+
+            # Choose a random direction to start moving in
+            # random.choice picks a random item from a list
+            self.current_direction = random.choice(self.directions)
+
+            # Return the change to be applied to the grid
+            # This is a list with one element, which is [x, y, player_id]
+            # It means "set the cell at (x,y) to belong to player_id"
             return [[x, y, self.player_id]]
+
+        # If the coordinates are invalid, return an empty list (no changes)
         return []
 
     def simulate_step(self, current_x, current_y, temp_grid, can_conquer_func, next_gen_cells):
         """
         Simulate one step of the snake pattern.
-        The snake tries to continue moving in its current direction,
-        but will change direction if blocked.
+
+        This is where the magic happens - we decide how the snake grows
+        from its current position.
+
+        Args:
+            current_x, current_y: The current position we're growing from
+            temp_grid: A temporary grid we're working with
+            can_conquer_func: A function that tells us if we can take over a cell
+            next_gen_cells: A set where we'll put the cells for the next step
+
+        Returns:
+            A list of the changes we want to make to the grid
         """
+        # This list will store all the changes we want to make
         changes = []
 
-        # If we have a current direction, try to continue in that direction
-        if self.current_direction:
-            # Try the current direction first
-            direction_options = [self.current_direction]
+        # Check if we should randomly change direction
+        # random.random() gives a number between 0.0 and 1.0
+        if random.random() < self.random_turn_chance:
+            # Decide to make a random turn!
 
-            # Add all other directions (in case we need to turn)
+            # Get the possible directions we can turn to
+            # We don't want to reverse direction completely, so we exclude the opposite
+            possible_new_directions = []
+
+            # For each of the four possible directions
             for direction in self.directions:
-                if direction != self.current_direction:
-                    direction_options.append(direction)
+                # Check if this direction is the opposite of our current direction
+                # To do this, we add the x components and y components
+                # If both sum to 0, then the directions are opposite
+                is_opposite = False
+                if self.current_direction:  # Only check if we have a current direction
+                    dx1, dy1 = direction
+                    dx2, dy2 = self.current_direction
+                    if dx1 + dx2 == 0 and dy1 + dy2 == 0:
+                        is_opposite = True
 
-            # Try each direction until we find a valid one
-            moved = False
-            for dx, dy in direction_options:
-                new_x, new_y = current_x + dx, current_y + dy
+                # If it's not the opposite direction, it's a valid turn
+                if not is_opposite:
+                    possible_new_directions.append(direction)
 
-                # Check if we can move to this cell
-                if can_conquer_func(new_x, new_y):
-                    # Update the temp grid
-                    temp_grid[new_y][new_x] = self.player_id
+            # Choose a random direction from the valid options
+            if possible_new_directions:
+                self.current_direction = random.choice(possible_new_directions)
 
-                    # Add this cell to our next generation
-                    next_gen_cells.add((new_x, new_y))
+        # If we have a current direction, try to move in that direction
+        if self.current_direction:
+            # Get the movement values from our current direction
+            dx, dy = self.current_direction
 
-                    # Record the change
-                    changes.append([new_x, new_y, self.player_id])
+            # Calculate the new position
+            new_x = current_x + dx
+            new_y = current_y + dy
 
-                    # Update the snake's path
-                    self.snake_segments.append((new_x, new_y))
+            # Check if we can move to this new position
+            if can_conquer_func(new_x, new_y):
+                # We can move here! Update the temporary grid
+                temp_grid[new_y][new_x] = self.player_id
 
-                    # Update our current direction
-                    self.current_direction = (dx, dy)
+                # Add this cell to the set for the next generation
+                next_gen_cells.add((new_x, new_y))
 
-                    moved = True
-                    break
+                # Add this change to our list of changes
+                changes.append([new_x, new_y, self.player_id])
 
-            # If we couldn't move in any direction, we're stuck
-            if not moved:
-                # Try a random cell from our path as a new head
-                if len(self.snake_segments) > 1:
-                    # Skip the last segment (current head) and try from somewhere else
-                    for i in range(len(self.snake_segments) - 2, -1, -1):
-                        x, y = self.snake_segments[i]
-                        # Try each direction from this segment
-                        for dx, dy in self.directions:
-                            new_x, new_y = x + dx, y + dy
-                            if can_conquer_func(new_x, new_y):
-                                # Start a new branch
-                                temp_grid[new_y][new_x] = self.player_id
-                                next_gen_cells.add((new_x, new_y))
-                                changes.append([new_x, new_y, self.player_id])
-                                self.snake_segments.append((new_x, new_y))
-                                self.current_direction = (dx, dy)
-                                moved = True
-                                break
-                        if moved:
-                            break
+                # Update our snake's history
+                self.snake_segments.append((new_x, new_y))
+            else:
+                # We can't move in our current direction, so we need to turn
 
+                # Create a list of all possible directions
+                possible_directions = []
+
+                # Add all directions except the opposite of our current direction
+                for direction in self.directions:
+                    dx1, dy1 = direction
+                    dx2, dy2 = self.current_direction
+
+                    # Check if this is the opposite direction
+                    if dx1 + dx2 != 0 or dy1 + dy2 != 0:
+                        possible_directions.append(direction)
+
+                # Shuffle the directions to try them in a random order
+                random.shuffle(possible_directions)
+
+                # Try each direction until we find one that works
+                found_direction = False
+                for dx, dy in possible_directions:
+                    new_x = current_x + dx
+                    new_y = current_y + dy
+
+                    if can_conquer_func(new_x, new_y):
+                        # This direction works! Update everything
+                        temp_grid[new_y][new_x] = self.player_id
+                        next_gen_cells.add((new_x, new_y))
+                        changes.append([new_x, new_y, self.player_id])
+                        self.snake_segments.append((new_x, new_y))
+
+                        # Update our current direction
+                        self.current_direction = (dx, dy)
+
+                        found_direction = True
+                        break
+
+                # If we couldn't find any valid direction, the snake is stuck
+                if not found_direction:
+                    # We're completely stuck, so the snake stops growing
+                    # Use 'pass' to explicitly indicate we're doing nothing here
+                    pass  # The snake's movement ends
+
+        # Return all the changes we want to make
         return changes
+
+    # We've removed the try_branch_from_segment method since we no longer need it
+    # The snake will now simply stop growing when it can't find a valid move
 
 
 class RootGrowth(CellularAutomaton):
@@ -308,15 +399,6 @@ class RootGrowth(CellularAutomaton):
     def simulate_step(self, current_x, current_y, temp_grid, can_conquer_func, next_gen_cells):
         """
         Simulate one step of the root growth pattern for a specific cell.
-
-        Args:
-            current_x, current_y: The coordinates of the current cell
-            temp_grid: Temporary grid for simulation
-            can_conquer_func: Function to check if a cell can be conquered
-            next_gen_cells: Set to store cells for the next generation
-
-        Returns:
-            List of changes made during this step
         """
         # This list will store all changes we make
         changes = []

@@ -57,7 +57,9 @@ class GameManager:
             "Snake Attack",
             "Slithers like a snake",
             SnakePattern,
-            generations = 20
+            generations = 20,
+            overwrite_neutral = True,
+            overwrite_enemy = True
         )
 
         root_growth = PlayerAction(
