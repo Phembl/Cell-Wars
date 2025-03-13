@@ -11,7 +11,7 @@ class GameManager:
         self.players = []
         self.current_player_index = 0
         self.selected_action = None # Stores the selected action as object
-        self.total_turns = 3
+        self.total_turns = 5
         self.current_turn = 1
         self.game_over = False
 
