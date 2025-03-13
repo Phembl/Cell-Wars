@@ -5,7 +5,7 @@ Welcome to **Cell Wars**.
 ### How to run
 
 To run this game you will have to install Python version 3.8.10 plus pygame. After installing this you are able to run the game
-via the console by navigating to /cell-wars/code and using the command **python3 run main.py**.
+via the console by navigating to /cell-wars/code and using the command **python3 main.py**.
 
 ### Connection
 
