@@ -1,5 +1,8 @@
 # Cell Wars Documentation
 
+## Disclaimer
+This documentation is fully written by Claude 3.7 Sonnet in extended thinking mode.
+
 ## 1. Software Architecture and Structure
 
 Cell Wars is a turn-based strategy game built using Python and Pygame, where two players compete to conquer cells on a grid-based battlefield using different cellular automaton patterns. The game implements a modular architecture with clear separation of concerns across multiple components.
